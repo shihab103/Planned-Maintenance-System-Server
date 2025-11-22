@@ -21,6 +21,87 @@ async function connectDB() {
     const db = client.db("PMS");
     const userCollection = db.collection("user");
     const assetCollection = db.collection("assets");
+    const taskCollection = db.collection("task");
+
+    // task related route
+
+    // GET all tasks
+    app.get("/tasks", async (req, res) => {
+      const tasks = await taskCollection
+        .aggregate([
+          {
+            $lookup: {
+              from: "assets",
+              localField: "assetId",
+              foreignField: "_id",
+              as: "asset",
+            },
+          },
+        ])
+        .toArray();
+      res.send(tasks);
+    });
+
+    // GET single task
+    app.get("/tasks/:id", async (req, res) => {
+      const id = req.params.id;
+      const task = await taskCollection.findOne({ _id: new ObjectId(id) });
+      res.send(task);
+    });
+
+    // POST create task (NO ROLE CHECK)
+    app.post("/tasks", async (req, res) => {
+      const task = { ...req.body, createdAt: new Date(), status: "pending" };
+
+      if (task.cycle && task.lastDoneDate) {
+        const nextDueDate = new Date(task.lastDoneDate);
+
+        if (task.cycle === "Monthly")
+          nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+        else if (task.cycle === "Quarterly")
+          nextDueDate.setMonth(nextDueDate.getMonth() + 3);
+        else if (task.cycle === "Yearly")
+          nextDueDate.setFullYear(nextDueDate.getFullYear() + 1);
+
+        task.nextDueDate = nextDueDate;
+      }
+
+      const result = await taskCollection.insertOne(task);
+      res.send(result);
+    });
+
+    // PATCH update task
+    app.patch("/tasks/:id", async (req, res) => {
+      const id = req.params.id;
+      const update = req.body;
+
+      if (update.lastDoneDate && update.cycle) {
+        const nextDue = new Date(update.lastDoneDate);
+
+        if (update.cycle === "Monthly")
+          nextDue.setMonth(nextDue.getMonth() + 1);
+        else if (update.cycle === "Quarterly")
+          nextDue.setMonth(nextDue.getMonth() + 3);
+        else if (update.cycle === "Yearly")
+          nextDue.setFullYear(nextDue.getFullYear() + 1);
+
+        update.nextDueDate = nextDue;
+      }
+
+      const result = await taskCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: update }
+      );
+
+      res.send(result);
+    });
+
+    // DELETE task (NO ROLE CHECK)
+    app.delete("/tasks/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await taskCollection.deleteOne({ _id: new ObjectId(id) });
+      res.send(result);
+    });
 
     // assets related route
 
